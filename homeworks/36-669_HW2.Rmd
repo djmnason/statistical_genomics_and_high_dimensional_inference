@@ -1,0 +1,249 @@
+---
+title: "36-669 HW2"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Q1: Odds Ratio (OR) and Logistic Regression
+
+```{r}
+# loading in the data
+source("https://raw.githubusercontent.com/xuranw/469_public/master/hw2/hw2_functions.R")
+famuss <- read.csv("https://raw.githubusercontent.com/xuranw/469_public/master/hw2/synthetic_famuss.csv")
+```
+
+## 1.A
+
+```{r}
+# AA - is the recessive variant
+A <- ifelse(famuss$actn3_rs540874 == 2, 1, 0)
+# reorders the table
+tab <- table(A, famuss$heart_disease)[c(2,1), c(2,1)]
+tab
+# Odds Ratio
+(tab[1,1]/tab[1,2])/(tab[2,1]/tab[2,2])
+```
+
+Since the OR is greater than 1, people with genotype AA for SNP actn3_rs540874 have a higher odds of getting heart disease as opposed to people with the genotypes Aa, aa.
+
+## 1.B
+
+```{r, warning=FALSE}
+library(glmnet)
+library(stats)
+glm_res <- stats::glm(heart_disease ~ . - norm_BMI, data = famuss, family = stats::binomial)
+
+idx <- which(colnames(famuss) == "heart_disease")
+
+coef_vec <- output_coefficients(glm_res, famuss, idx)
+summary(glm_res)
+
+pred_vec <- output_predictions(glm_res, famuss, idx)
+
+# misclassification rate
+obs_response <- famuss$heart_disease
+tab_mis <- table(pred_vec, obs_response)
+tab_mis
+# calculating the rate
+1 - sum(diag(tab_mis))/sum(tab_mis)
+
+# graphic
+coef_vec_graph <- coef_vec[-(which(coef_vec == coef_vec["(Intercept)"]))]
+plot(exp(coef_vec), 
+     main = "Logistic Regression (without BMI)\nMisclassification: 0.33",
+     xlab = "SNP order (alphabetical)", ylab = "Estimated OR",
+     pch = 19)
+abline(h = 1.2, col = "red", lty = 2)
+abline(h = 1.0, col = "red")
+abline(h = 0.8, col = "red", lty = 2)
+```
+
+## 1.C
+```{r}
+glm_res2 <- stats::glm(heart_disease ~ ., data = famuss, family = stats::binomial)
+
+coef_vec2 <- output_coefficients(glm_res2, famuss, idx)
+summary(glm_res2)
+
+pred_vec2 <- output_predictions(glm_res2, famuss, idx)
+
+# misclassification rate part 2
+obs_response <- famuss$heart_disease
+tab_mis2 <- table(pred_vec2, obs_response)
+tab_mis2
+# calculating the rate
+1 - sum(diag(tab_mis2))/sum(tab_mis2)
+# dropping the parameters for intercept and bmi
+coef_vec2_graph <- coef_vec2[-(which(coef_vec2 == coef_vec2["norm_BMI"] | coef_vec2 == coef_vec2["(Intercept)"]))]
+plot(exp(coef_vec2_graph), 
+     main = "Logistic Regression (with BMI)\nMisclassification: 0.10",
+     xlab = "SNP order (alphabetical)", ylab = "Estimated OR",
+     pch = 19)
+abline(h = 1.2, col = "red", lty = 2)
+abline(h = 1.0, col = "red")
+abline(h = 0.8, col = "red", lty = 2)
+
+coef_vec2["norm_BMI"]
+```
+
+After including the "norm_BMI" variable in the logistic regression equation, we see that more of the SNP coefficients have estimated ORs that lie outside of the range (0.8, 1.2). Additionally, the absolute distance of the estimated ORs of the SNPs from the range (0.8, 1.2) increases because the coefficient estimates are larger. The misclassification rate also dropped by 23%, suggesting that the model predictions have improved relative to the data. The difference between the graphs suggest that "norm_BMI" should be included in the logistic regression equation because of how the estimated ORs change once it is accounted for.
+
+The magnitude of the coefficient for "norm_BMI" is `r coef_vec2["norm_BMI"]`.
+
+## 1.D
+
+```{r}
+# cross-validation
+# making the data frames for cv.regression
+xs <- famuss[, -1]
+y <- famuss[, "heart_disease"]
+
+set.seed(10)
+cv_glm_res <- glmnet::cv.glmnet(x = as.matrix(famuss[,-idx]), y = famuss[,idx],
+                              family = "binomial", alpha = 1, intercept = T)
+
+coef_vec3 <- output_coefficients(cv_glm_res, famuss, idx)
+
+pred_vec3 <- output_predictions(cv_glm_res, famuss, idx)
+
+# misclassification rate part 2
+tab_mis3 <- table(pred_vec3, obs_response)
+tab_mis3
+# calculating the rate
+1 - sum(diag(tab_mis3))/sum(tab_mis3)
+
+# dropping the parameters for interceot and bmi
+coef_vec3_graph <- coef_vec3[-(which(coef_vec3 == coef_vec3["norm_BMI"] | coef_vec3 == coef_vec3["(Intercept)"]))]
+plot(exp(coef_vec3_graph), 
+     main = "Penalized logistic regression (with BMI)\nMisclassification: 0.15",
+     xlab = "SNP order (alphabetical)", ylab = "Estimated OR",
+     pch = 19, ylim = c(0.8, 1.2))
+abline(h = 1.2, col = "red", lty = 2)
+abline(h = 1.0, col = "red")
+abline(h = 0.8, col = "red", lty = 2)
+
+# magnitude of coefficient for norm_BMI
+coef_vec3["norm_BMI"]
+```
+
+Examining the graph associated with the penalized logistic regression that includes the BMI term, we see that virtually all the SNPs have estimated ORs of 1, and none of the estimated ORs are outside of the range (0.8, 1.2). This contrasts with the plot in 1.B where many of the estimated ORs lie outside this interval of values for the SNPs. Also, the misclassification rate increased slightly by approximately 5% compared to the logistic regression without a penalty (which is similar to the rate from part 1.C). The results of the Penalized logistic regression help to identify which coefficients are most important for prediction and should be included in the regression model. Since none of the estimated ORs lie outside the (0.8, 1.2), this suggests that the SNPs may not be useful for predicting heart disease.
+
+
+# Q2: Empirical Effects of Correlation on Lasso
+
+## 2.A
+
+The function takes inputs for the rows (n = observations) and columns (p = predictors) of a matrix and has predefined values for "k" and "cor_within" for correlation values between the predictor values in the covariate matrix. It then creates a square matrix ("cor_mat") with p by p dimensions as well as an index vector of size p. The for loop creates k (k is 3) smaller matrices within the covariance matrix by replacing values in the top-left, middle, and bottom-right sections with the "cor_within" value and then replaces all diagonal values with 1. It then creates a covariate matrix x from the "cor_mat" and random values the multivariate normal distribution based on the n and p inputs of the equation, along with a coefficient vector that inserts the value 5 into specific entries within the vector ("coef_truth") to represent the true responses. Finally, the function calculates values of a y vector (size p) based on matrix multiplication between x and the coefficient vector plus a random noise variable and displays x, y, and the coefficient vector in list format.
+
+## 2.B
+```{r}
+dat_2b_0 <- generate_data(n = 1000, p = 100, cor_within = 0)
+dat_2b_5 <- generate_data(n = 1000, p = 100, cor_within = 0.5)
+dat_2b_9 <- generate_data(n = 1000, p = 100, cor_within = 0.9)
+
+# plotting the graph
+par(mfrow = c(1,3))
+plot_covariance(dat_2b_0$x, main = "Correlation: 0", axes = F)
+plot_covariance(dat_2b_5$x, main = "Correlation: 0.5", axes = F)
+plot_covariance(dat_2b_9$x, main = "Correlation: 0.9", axes = F)
+par(mfrow = c(1,1))
+```
+
+As cor_within increases, the values of the data within the squares of the plot are more concentrated around the line as a result of a higher correlation value. Since the data is more concentrated for higher correlation, the resulting box in the area of the data is a darker shade because larger data values are present. There is a lighter shade or no shade with lower correlation because there is more variation around the line and as a result, less magnitude of the data values in any given spot on the map and specifically around the correlation line. This mirrors a pairwise correlation matrix for multiple variables.
+
+## 2.C
+```{r}
+simulate_lasso <- function(n, cor_within) {
+        # step 1
+        dat <- generate_data(n = n, p = 2*n, cor_within = cor_within)
+        dat_df <- as.data.frame(cbind(dat$x, dat$y))
+        dat_idx <- ncol(dat_df)
+        
+        # step 2
+        cvglmnet_res <- glmnet::cv.glmnet(x = as.matrix(dat_df[,-dat_idx]), y = dat_df[,dat_idx], family = "gaussian", alpha = 1, intercept = FALSE)
+        
+        # step 3
+        cvglmnet_res_coef <- output_coefficients(cvglmnet_res, dat_df, dat_idx)[-1]
+        l2_error <- sqrt(sum((dat$coef_truth - cvglmnet_res_coef)^2))
+        
+        # step 4
+        pred_error <- mean((dat$x %*% (dat$coef_truth - cvglmnet_res_coef))^2)
+        list(l2_error = l2_error, pred_error = pred_error)
+}
+```
+
+## 2.D
+### Part 1 - Simulation
+```{r, cache=TRUE}
+# part 1: simulation
+# initializing the data frame to get values from for the simulation
+df2d <- expand.grid(c(seq(30, 100, by = 10)), c(0, 0.5, 0.75, 0.9))
+colnames(df2d) <- c("n", "cor_within")
+# initializing the vectors that will collect the median values from the simulations
+med_l2_vec <- rep(0, 32)
+med_MSE_vec <- rep(0, 32)
+# initializing vectors that will be used for the simulation
+n_vec <- rep(0, 100)
+n_vec2 <- rep(0, 100)
+
+# simulation - outer loop * inner loop = 32 * 100 = 3200
+for (i in seq(nrow(df2d))) { # outer loop is 32
+        for (j in seq_along(n_vec)) { # inner loop is 100
+                # using values in the simulate_lasso function from the data frame
+                # for each simulation we store the values in an entry of the vector
+                n_vec[j] <- simulate_lasso(df2d[i,1],df2d[i,2])[[1]]
+                n_vec2[j] <- simulate_lasso(df2d[i,1],df2d[i,2])[[2]]
+        }
+        # after each iteration of the inner loop is complete, we take the median
+        # of all the values from the simulation vector and store it in the entry
+        # of these vectors that have the same length as the data frame
+        med_l2_vec[i] <- median(n_vec)
+        med_MSE_vec[i] <- median(n_vec2)
+}
+# adding the results of the vectors into the data frame
+df2d$l2_vec <- med_l2_vec
+df2d$pr_vec <- med_MSE_vec
+```
+
+### Part 2 - Plotting the results of the simulation
+```{r}
+# l2 vectors
+n_values <- seq(30, 100, by = 10)
+med_l2_cor0 <- df2d$l2_vec[df2d$cor_within == 0]
+med_l2_cor05 <- df2d$l2_vec[df2d$cor_within == 0.5]
+med_l2_cor075 <- df2d$l2_vec[df2d$cor_within == 0.75]
+med_l2_cor09 <- df2d$l2_vec[df2d$cor_within == 0.9]
+# pred vectors
+med_MSE_cor0 <- df2d$pr_vec[df2d$cor_within == 0]
+med_MSE_cor05 <- df2d$pr_vec[df2d$cor_within == 0.5]
+med_MSE_cor075 <- df2d$pr_vec[df2d$cor_within == 0.75]
+med_MSE_cor09 <- df2d$pr_vec[df2d$cor_within == 0.9]
+
+par(mfrow = c(1,2))
+
+# l2 plot
+plot(x = n_values, y = med_l2_cor0, type = "b", pch = 19,
+     xlab = "n", ylab = "Median L2 error (over 100 trials)",
+     main = "L2 error", ylim = c(0, 2.5))
+lines(x = n_values, y = med_l2_cor05, type = "b", col = "red", pch = 19)
+lines(x = n_values, y = med_l2_cor075, type = "b", col = "lightgreen", pch = 19)
+lines(x = n_values, y = med_l2_cor09, type = "b", col = "lightblue", pch = 19)
+legend("topright", c("Cor: 0", "Cor: 0.5", "Cor: 0.75", "Cor: 0.9"), 
+       fill = c("black", "red", "lightgreen", "lightblue"))
+
+# pred error plot
+plot(x = n_values, y = med_MSE_cor0, type = "b", pch = 19,
+     xlab = "n", ylab = "Median prediction error (over 100 trials)",
+     main = "Prediction error", ylim = c(0, 0.7))
+lines(x = n_values, y = med_MSE_cor05, type = "b", col = "red", pch = 19)
+lines(x = n_values, y = med_MSE_cor075, type = "b", col = "lightgreen", pch = 19)
+lines(x = n_values, y = med_MSE_cor09, type = "b", col = "lightblue", pch = 19)
+legend("topright", c("Cor: 0", "Cor: 0.5", "Cor: 0.75", "Cor: 0.9"), 
+       fill = c("black", "red", "lightgreen", "lightblue"))
+par(mfrow = c(1,1))
+```
+
+For the L2 error plot, the median L2 error tends to larger as the "cor_within" value gets closer to one for a given value of "n". However, in every case, the error decreases as the value of "n" increases. For the Prediction error plot, the median prediction error is relatively constant regardless of the value of "cor_within" for a given value of "n". In this case as well, the median prediction error decreases in all cases as "n" increases. These results illustrate the importance of examining the correlation between the predictor variables since the coefficient estimates could be noticeably wrong even if the predictions are accurate because of high correlation among the "X" variables.

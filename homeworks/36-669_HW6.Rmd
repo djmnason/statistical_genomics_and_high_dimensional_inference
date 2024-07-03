@@ -1,0 +1,126 @@
+---
+title: "36-669 HW6"
+author: "Daniel Nason"
+date: "11/22/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 0
+
+I plan to do a data analysis project on the Zeisel data set for the final with Anirban Chowdhury. We haven't reviewed the data set yet but would like to focus the analysis on clustering the data.
+
+```{r}
+# setwd("C:/Users/Owner/CMU/Fall/36-669/HW/HW6")
+library(PMA)
+tmp <- read.csv("https://raw.githubusercontent.com/xuranw/
+469_public/master/hw6/darmanis_preprocessed.csv",row.names = 1)
+expr_mat <- as.matrix(tmp[,-1])
+cell_types <- as.factor(tmp[,1])
+source("https://raw.githubusercontent.com/xuranw/469_public/
+master/hw6/hw6_functions.R")
+# dim(expr_mat)
+# length(cell_types)
+# table(cell_types)
+# expr_mat[1:5,1:5]
+```
+
+# Question 1
+
+## 1.A
+
+```{r}
+expr_mat <- 10**4*scale(t(expr_mat), center = FALSE, scale = rowSums(expr_mat))
+expr_mat <- log2((t(expr_mat) + 1 ))
+expr_mat <- scale(expr_mat)
+expr_mat[1:5,1:5]
+```
+
+## 1.B
+
+```{r}
+pca_res <- stats::prcomp(expr_mat, center = T, scale. = T)
+expr_pca <- pca_res$x[,1:4]
+expr_pca <- scale(expr_pca)
+
+par(mfrow = c(1,2))
+plot(pca_res$sdev, pch = 16, ylab = "Square root of eigenvalues", xlab = "Index of principal component", main = "Scree plot of full data")
+plot(x = expr_pca[,1], y = expr_pca[,2], type = "p", pch = 16, xlab = "First Principal Component", ylab = "Second Principal Component", main = "Visualizing data\n(True clusters, full data)", col = ifelse(cell_types == "astrocytes", "black", ifelse(cell_types == "fetal_quiescent", "red", ifelse(cell_types == "neurons", "green", "blue"))))
+legend("bottomleft", legend = c("astrocytes", "fetal quiescent", "neuron", "oligodendrocytes"), fill = c("black", "red", "green", "blue"), bty = "n")
+par(mfrow = c(1,1))
+```
+
+Based on the Scree plot, we see that the first 4 principle components have the largest square rooted eigenvalues, so these would be reasonable to use for the analysis since they account for more variation in the data. The scatterplot shows that the majority of the points of the first 2 principle components cluster around 0 for each of the categories of the 4 cell types. The majority of the points in the clusters for neuron, fetal quiescent, and oligodendrocytes cells are all roughly at the origin, and the cluster for astrocytes points are slightly different in that they are mostly around (1, 2). However, there is one point for neuron that is far outside the cluster for the other points and does not fit with the rest of the clusters of the data.
+
+## 1.C
+
+```{r, cache=TRUE}
+set.seed(10)
+kmean_res <- stats::kmeans(expr_mat, centers = length(unique(cell_types)))
+table(kmean_res$cluster, cell_types)
+
+compute_misclustering_rate(kmean_res$cluster, cell_types)
+```
+
+We see that the clustering error is 14.3695%, which suggests that using PCA for all of the genes is only somewhat effective in clustering the data. From these results we also see that the clustering mislabeled an entire cell type since cluster 3 contains astrocytes and oligodenrocytes while cluster 4 does not cluster any of the cell types, illustrating that multiple cell types are incorrectly clustered into a single cluster.
+
+## 1.D
+
+```{r, cache=TRUE}
+set.seed(10)
+kmean_res2 <- stats::kmeans(expr_pca, centers = length(unique(cell_types)))
+table(kmean_res2$cluster, cell_types)
+
+compute_misclustering_rate(kmean_res2$cluster, cell_types)
+
+plot(x = expr_pca[,1], y = expr_pca[,2], type = "p", pch = 16, xlab = "First Principal Component", ylab = "Second Principal Component", main = "Visualizing data\n(Est. clusters, full data)", col = ifelse(kmean_res2$cluster == 3, "green", ifelse(kmean_res2$cluster == 1, "black", ifelse(kmean_res2$cluster == 4, "blue", "red"))))
+```
+
+We see that the clustering error is 29.91202%, which illustrates that using the top 4 principle principle components for all of the genes is relatively less effective in clustering the data compared to using all of the PCAs. This is because information is lost by arbitrarily selecting only the top 4 principle components. The results show that clusters 1 contains the cell types for fetal_quiescent and neurons while cluster 3 contains cell types for astrocytes and oligodendrocytes, illustrating that multiple cell types are incorrectly clustered into a single cluster.
+
+## 1.E
+
+```{r, cache=TRUE}
+set.seed(10)
+spca_cv_res <- PMA::SPC.cv(expr_mat, sumabsvs = seq(1.2, sqrt(ncol(expr_mat))/2, length.out = 10))
+spca_res <- PMA::SPC(expr_mat, sumabsv = spca_cv_res$bestsumabsv1se, K = 4)
+dim(spca_res$v)
+
+gene_idx <- unique(sort(unlist(lapply(1:ncol(spca_res$v), function(i){
+  which(spca_res$v[,i]!=0)
+}))))
+length(gene_idx)
+
+expr_mat_screened <- expr_mat[,gene_idx]
+dim(expr_mat_screened)
+expr_mat_screened <- scale(expr_mat_screened, center = T, scale = T)
+head(expr_mat_screened)
+#expr_mat_screened[1:3, 1:3]
+```
+
+
+## 1.F
+
+```{r,cache=TRUE}
+pca_res2 <- stats::prcomp(expr_mat_screened, center = T, scale. = T)
+expr_spca <- pca_res2$x[,1:4]
+expr_spca <- scale(expr_spca)
+dim(expr_spca)
+#plot(pca_res2$sdev, pch = 16, ylab = "Square root of eigenvalues", xlab = "Index of principal component", main = "Scree plot of screened data")
+
+set.seed(10)
+kmean_res3 <- stats::kmeans(expr_spca, centers = 4)
+table(kmean_res3$cluster, cell_types)
+compute_misclustering_rate(kmean_res3$cluster, cell_types)
+
+par(mfrow = c(1,2))
+plot(x = expr_spca[,1], y = expr_spca[,2], type = "p", pch = 16, xlab = "First Principal Component", ylab = "Second Principal Component", main = "Visualizing data\n(True clusters, screened data)", col = ifelse(cell_types == "astrocytes", "black", ifelse(cell_types == "fetal_quiescent", "red", ifelse(cell_types == "neurons", "green", "blue"))))
+legend("bottomleft", legend = c("astrocytes", "fetal quiescent", "neuron", "oligodendrocytes"), fill = c("black", "red", "green", "blue"), bty = "n")
+plot(x = expr_spca[,1], y = expr_spca[,2], type = "p", pch = 16, xlab = "First Principal Component", ylab = "Second Principal Component", main = "Visualizing data\n(Est. clusters, screened data)", col = ifelse(kmean_res3$cluster == 3, "green", ifelse(kmean_res3$cluster == 1, "black", ifelse(kmean_res3$cluster == 4, "blue", "red"))))
+par(mfrow = c(1,1))
+```
+
+The clustering results improved after deploying sparse PCA for 1.F compared to 1.B and 1.C because of the difference between PCA and sparce PCA in generating principal components. Unlike PCA, sparse PCA imposes a penalty for nonzero loadings to screen for relevant features, so only a small number of features have non-zero loadings that can be selected. Since sparce PCA takes this additional screening step to find the most important features, it has clusters that more accurately reflect the true clusters and therefore results in a smaller misclustering rate. That is, each of the four clusters contain mostly 1 of each cell type unlike the results for PCA in 1.B and 1.D, where at least one cluster contains multiple cell types and as a result have higher misclustering rates.

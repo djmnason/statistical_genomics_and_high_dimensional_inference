@@ -1,0 +1,134 @@
+---
+title: "36-669 HW 1"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Q0: Survey
+
+### 0.A
+I preferred to be called "Dan" although Dan or Daniel is fine.
+
+### 0.B
+I have read and understood the entire syllabus.
+
+### 0.C
+Statistics Courses I've taken: Since I am a graduate student and have taken these courses elsewhere, I will list the title and what I think is the CMU Statistics Department equivalent next to it:
+
+Statistics I & II (36-200 and 36-202)
+
+Mathematical Theory of Probability (36-225)
+
+Mathematical Theory of Statistics (36-226)
+
+Regression Methods (36-401)
+
+Introduction to Statistical Programming 
+
+### 0.D
+Course that have taught me coding:
+
+Introduction to Computer Science
+
+Introduction to Statistical Programming
+
+Regression Methods
+
+Econometrics
+
+### 0.E
+None
+
+### 0.F
+I hope to learn more about how statistics can be applied to genetic data to make inferences and improve my writing and software skills. I am also hoping to use the project to use the research project to investigate the inheritability of diseases that are afflicting my immediate family, specifically Inflammatory Bowel Disease.
+
+
+## Q1: Basic Analysis in R
+
+### 1.A
+Define the following terms:
+
+SNP: SNP stands for single nucleotide polymorphism. It is a single nucleotide change and is responsible for most variation in the genome.
+
+Gene: A gene is a unit of heredity that is transferred from a parent to an offspring and is held to determine characteristics of the offspring.
+
+GWAS: Genome-wide association studies. These are used to study common disease caused by many small genetic effects (can test up to millions of SNPs at a time). The Manhattan Plot can be used to visualize results of GWAS.
+
+Allele: An allele is one of two or more possible versions of a gene. Individuals inherit two alleles for each gene, one from each parent.
+
+Genotype: A genotype is a pair of alleles inherited from the parents by the offspring. It is the specific makeup of the genome and may not be readily apparent by the feature of a subject. Subjects of different genotypes can have the same phenotype.
+
+Phenotype: A phenotype is an appearance or feature of a subject. Knowing the phenotype does not necessarily imply the knowing the genotype.
+
+Recombination: Process by which pieces of DNA are broken and recombined to produce new combinations of alleles. This creates genetic diversity at the level of genes that reflects differences in DNA sequences.
+
+Mutation: Change in the DNA that results in the genetic background of an individual. Mutations can still occur in the DNA of offspring of parents without being present. They can also appear after many generations of offspring when the mutation occurred.
+
+Linkage Disequilibrium: Spatial correlation in chromosomes that is generated over time from recombination.
+
+### 1.B
+
+```{r}
+# loading in the data set
+famuss <-  read.csv("https://raw.githubusercontent.com/xuranw/469_public/master/data/famuss.csv")
+# enumerate names of the columns in the data
+colnames(famuss)
+```
+Based on the results above, we can determine the number of SNPs in the database as: SNPs in database = Total Number of Cols - Cols for (ID, Gender, Age, Race) = 83 - 4 = 79
+
+```{r}
+# determine which column corresponds to SNP actn3_1671064
+which(colnames(famuss) == "actn3_1671064")
+# using the table function
+table(famuss[,4])
+# table function stratified by race
+table(famuss[,4], famuss$Race)
+```
+
+### 1.C
+Creating a barplot for SNP esr1_rs2077647
+```{r}
+x <- as.vector(table(famuss$esr1_rs2077647))
+names(x) <- c(1,0,2)
+x <- sort(x, decreasing = T)
+barplot(x, xlab = "Numeric coding for SNP esr1_rs2077647",
+        ylab = "Count",
+        main = "Genotype counts of SNP esr1_rs2077647")
+```
+
+
+# Q2: Empirical verification on the Central Limit Theorem
+
+## 2.A
+
+```{r}
+# reading the generate_data function into R
+source("https://raw.githubusercontent.com/xuranw/469_public/master/hw1/clt.R")
+```
+Description of the function:
+The "generate_data" function takes a positive integer as an input and returns an output of a vector with the length of inputted integer where each entry is a random number. The random numbers are generated from a normal distribution with mean 10 and standard deviation 1, a gamma distribution with shape parameter 2 and scale parameter 2, and a chi-square distribution with 3 degrees of freedom. The frequency with which numbers from these distributions are sampled is determined by the sample function built into R.
+
+## 2.B
+```{r}
+# creating a data frame and assigning names to col
+hist_df <- data.frame(vector("numeric", 10000), vector("numeric", 10000),
+                      vector("numeric", 10000), vector("numeric", 10000),
+                      vector("numeric", 10000), vector("numeric", 10000))
+
+# filling out the data frame
+z <- c(1,2,3,5,10,100)
+for(i in seq_along(z)){
+  hist_df[,i] <- replicate(10000, mean(generate_data(z[i]))) 
+}
+
+# creating histograms for each sample size 
+par(mfrow = c(2,3))
+for(i in seq_along(z)){
+  hist(hist_df[,i], breaks = 100, xlab = "Value", main = paste("Sample Size: ", z[i], sep = " "))
+}
+```
+
+The plots help to verify the Central Limit Theorem because it dictates that the sampling distribution of the sample mean is approximately normally distributed and centered around the population mean as sample size approaches infinity. This is evident by the shape of the plot as sample size increases from which the sample mean is calculated, as it more closely resembles the normal distribution.

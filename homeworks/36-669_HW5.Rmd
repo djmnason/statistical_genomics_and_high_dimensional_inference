@@ -1,0 +1,159 @@
+---
+title: "36-669 HW5"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,results='hide',warning=FALSE}
+library(DESeq2)
+library(hexbin)
+library(vsn)
+library(pheatmap)
+library(SummarizedExperiment)
+library(genefilter)
+library(tidyverse)
+load(url("https://github.com/xuranw/469_public/raw/main/hw5/airway.RData"))
+```
+# Question 1
+
+## 1.A
+
+```{r}
+class(dds)
+SummarizedExperiment::colData(dds)
+count_dds <- SummarizedExperiment::assay(dds)
+class(count_dds) # matrix/array
+dim(count_dds) # 17213 rows of genes, 8 cols of samples
+colnames(count_dds) # names of the samples
+head(rownames(count_dds)) # first 6 genes
+head(count_dds) # first 6 rows of the 8 samples
+colData(dds)
+```
+
+### 1.A.1
+The matrix stores the count of how often a specific gene expression appeared in a given sample. 
+
+### 1.A.2
+The output displays the sample name, the donor/cell (factor variables), and the condition that was applied to the cell. In each sample, a treated cell was treated with Dexamethasone or it did not receive treatment.
+
+### 1.A.3
+The gene symbol for ENSG00000012048 is BRCA1, which is the gene used for determining the likelihood a women will develop early onset breast cancer.
+
+## 1.B
+```{r}
+dds <- DESeq2::DESeq(dds)
+res <- DESeq2::results(dds)
+res
+```
+DESeq uses the generalized linear model with a negative binomial distribution to conduct differential expression analysis on the sequencing data. The first step of the analysis is estimation of the size factors for each gene, which is important because the size factors are utilized to calculated the fitted mean for a given sample, where the mean is a parameter in the binomial distribution. The second step of the analysis is an estimation of dispersion, which is important for the analysis because it is one of the parameters for the negative binomial distribution that is used to calculate the variance and account for additional variability in the data as the mean changes. The third step of the analysis is fitting the Negative Binomial GLM and Wald statistics, which is performed from the results obtained in the first two steps of the analysis. This allows us to draw inferential conclusions based on the beta coefficients in the model to evaluate the log fold change between populations accounting for additional variability in the data.
+
+
+## 1.C
+```{r}
+DESeq2::plotMA(res, ylim = c(-5, 5), main = "MA plot", colSig = "red", colNonSig = "gray40", colLine = "red")
+```
+
+### 1.C.1
+Each point represents the count of a specific gene, and the triangles represent points classified as outliers. The color represents whether or not a point is statistically significant at the 10% level by using MA to estimate their per gene variance and account for smaller counts of genes by shrinking them toward 0. Points that are highlighted gray have p-values greater than or equal to 0.1 based on their log fold change, and red points have a p-value less than 0.1.
+
+### 1.C.2
+The X-axis represents the mean expression of the normalized counts in the case-control comparison for each gene in the analysis, and the Y-axis represents the log fold change of these counts when comparing treated to untreated. Larger fold changes have a greater distance from 0 and are more likely to be statistically significant.
+
+## 1.D
+```{r}
+vsd <- DESeq2::vst(dds, blind = FALSE)
+count_vsd <- SummarizedExperiment::assay(vsd)
+dds_plot <- vsn::meanSdPlot(count_dds, plot = F)
+dds_final <- dds_plot$gg + labs(title = "Not variance stabilized")
+vsd_plot <- vsn::meanSdPlot(count_vsd, plot = F)
+vsd_final <- vsd_plot$gg + labs(title = "Variance stabilized")
+gridExtra::grid.arrange(dds_final, vsd_final, nrow = 1)
+```
+
+
+### 1.D.1
+
+It would be less desirable because the unstabilized variance are extremely skewed data with large standard deviation values (violating the assumptions of the residuals need for regression modeling) and since hypotheses testing requires us to divide by standard deviation, inflated or unstable standard deviations would potentially mask statistically significant results. Only the genes with the largest changes changes could still be statistically significant, and we may not detect other significant results that would have been captured if the variance were stabilized. 
+
+### 1.D.2
+The function creates a visualization of a scatter plot with the row-wise mean on the X-axis and standard deviation on the Y-axis of the matrix inputted into the function for the gene expressions, allowing us to visualize if there is a dependence between the mean and variance. The plane of graphic is divided into regular hexagons, and the number of cases are counted within those hexagons. How many observations lie within a given hexagon determine its count, where lighter shades of blue imply more observations.
+
+### 1.D.3
+The right plot looks more variance-stabilized since the range of values for the standard deviations is much smaller (0, 2.5) than the range of values for the unstabilized variances (0, 10,000). The spread of the errors is more uniform and more closely appears to be random.
+
+## 1.E
+```{r}
+topVarGenes <- head(order(genefilter::rowVars(count_vsd),
+decreasing = TRUE), 40)
+dat <- count_vsd[topVarGenes,]
+dat <- dat - rowMeans(dat)
+anno <- as.data.frame(SummarizedExperiment::colData(vsd)[, c("cell","dex")])
+pheatmap::pheatmap(dat, annotation_col = anno, fontsize_row = 5)
+```
+
+### 1.E.1
+The top x genes (i.e. top 40) are selected by taking highest variances for the genes in descending order, which is calculated by taking the variance of a given row.
+
+### 1.E.2
+The columns in the figure correspond to whether a given sample received treatment or not, and the columns are grouped by treated and untreated and then by the cell of the donor, with the sample number listed at the bottom. The rows correspond to a gene in a given experiment, and color of a cell is based on how different the variance of the gene in a given study is away from the mean of the expression of the gene across all samples. Clustering of the genes is based on how similarly they expression is in each sample, and samples are clustered together based how similarly their genes are expressed.
+
+### 1.E.3
+Examining the graphic, we see that the cells clustered together for top half of the rows (ENSG00000133110.14 - ENSG00000131002.11) have roughly similar values regardless of whether they are in the treatment or control group for a given study. However, the bottom half of the rows (ENSG00000162817.6 and lower) have different (redder) colors, and therefore more differential gene expression, for the treated compared to the control groups for a given study, suggesting that these genes are more affected by the treatment. 
+
+# Question 2
+
+```{r}
+library(MASS)
+dat <- read.csv("https://raw.githubusercontent.com/xuranw/469_public/master/hw5/synthetic.csv")
+plot(dat$x, dat$y, pch = 16, xlab = "x", ylab = "y")
+```
+
+## 2.A
+```{r}
+fit_lm <- stats::lm(y ~ ., data = dat)
+pred_lm <- stats::predict(fit_lm, newdata = dat, type = "response")
+est_sd <- summary(fit_lm)$sigma
+
+plot(dat$x, dat$y, pch = 16, ylim = range(c(pred_lm, dat$y)),
+main = "Gaussian fit", xlab = "x", ylab = "y")
+points(dat$x, pred_lm, col = "red", pch = 16, xlab = "x", ylab =
+"y")
+for(i in 1:length(dat$x)){
+lines(rep(dat$x[i], 2), c(pred_lm[i]-2*est_sd, pred_lm[i]+2*est_sd), col = "red")
+}
+```
+The linear regression fit would not be appropriate because there is not a linear relationship between x and y. There is clearly a pattern in the residuals based on the figure, which violates the constant variance assumption for a linear regression model. That is, we would expect not to see a pattern in the residuals and the majority of the values would like within 2 standard deviations of the mean of the residuals, which is 0.
+
+## 2.B
+```{r}
+fit_poisson <- stats::glm(y ~ ., data = dat, family = "poisson")
+pred_poisson <- stats::predict(fit_poisson, newdata = dat, type = "response")
+est_sd_poisson <- sqrt(pred_poisson)
+
+plot(dat$x, dat$y, pch = 16, ylim = range(c(pred_poisson, dat$y)), main = "Poisson fit", xlab = "x", ylab = "y")
+points(dat$x, pred_poisson, col = "red", pch = 16, xlab = "x", ylab = "y")
+for (i in 1:length(dat$x)){
+lines(rep(dat$x[i], 2), c(pred_poisson[i] - 2 * est_sd_poisson[i], pred_poisson[i] + 2 * est_sd_poisson[i]), col = "red")
+}
+```
+The Poisson regression fit is more appropriate for the data since y appears to be exponentially related to x instead of linearly related. In the Poisson regression model, the mean and the variance are assumed to be equal and so they change together for a given value of x rather than assuming a constant change in y for a given value of x. Note that while the mean of the Poisson regression fit appears to be at the center of the data, most of the observations lie outside the $\pm2$ standard deviation interval from the mean, suggesting that the data are overdispersed.
+
+## 2.C
+```{r}
+fit_nb <- MASS::glm.nb(y ~ ., data = dat)
+pred_nb <- stats::predict(fit_nb, newdata = dat, type = "response")
+est_sd_nb <- sqrt(pred_nb + I(pred_nb^2)/summary(fit_nb)$theta)
+
+plot(dat$x, dat$y, pch = 16, ylim = range(c(pred_nb, dat$y)), main = "Negative binomial fit", xlab = "x", ylab = "y")
+points(dat$x, pred_nb, col = "red", pch = 16, xlab = "x", ylab = "y")
+for (i in 1:length(dat$x)){
+lines(rep(dat$x[i], 2), c(pred_nb[i] - 2 * est_sd_nb[i], pred_nb[i] + 2 * est_sd_nb[i]), col = "red")
+}
+```
+
+The Negative Binomial regression fit is more appropriate for the data than the Poisson fit because it better accounts for the overdispersion in the data. While the mean for both models is approximately equal, the variance in the Negative Binomial model accounts for overdispersion since the variance is a function of the mean plus the squared mean divided by an overdispersion parameter. Therefore, the the $\pm2$ standard deviation interval from the mean will better account for the data in the model and overcome overdispersion. This is important because accounting for overdispersion will result in more larger and accurate estimates for the standard errors for the coefficient estimates and help us to avoid drawing inappropriate inferences from the data based on the statistical significance of these estimates.
